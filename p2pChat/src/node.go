@@ -1,6 +1,11 @@
 package main
 
 /**
+This project will implement a Peer-to-Peer command-line chat in Go language. 
+@March 2013
+@by Morteza Shahriari Nia   @mshahriarinia
+
+
 Reading arbitrary strings from command-line was a bit trickey as I couldn't get a straight-forward example 
 on telling how to do it. But after visiting tens of pages and blogs it was fixed.
 
@@ -18,22 +23,22 @@ import (
 	"strconv"
 	//	"strings"
 	"container/list"
-	"time"
 	"sync"
+	"time"
 )
 
 var (
-	port        string
-	serverIP           = "localhost" //TODO fix server ip
-	SERVER_PORT string = "5555"      //default port as the main p2p server
-	stop               = false
+	port            string
+	serverIP               = "localhost" //TODO fix server ip
+	SERVER_PORT     string = "5555"      //default port as the main p2p server
+	stop                   = false
 	mutexClientList sync.Mutex
 )
 
 func main() {
 	//initialize values
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
-	connList := list.New() //list of p2p chat users.
+	connList := list.New()              //list of p2p chat users.
 
 	fmt.Println("               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.")
 	fmt.Print("Run this node as main server? (y/n) ")
@@ -61,7 +66,7 @@ func main() {
 	fmt.Println("Local Socket: " + localIp[0] + ":" + port)
 
 	go acceptClients(port, connList)
-	go chatSay()
+	go chatSay(connList)
 	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
 
 	fmt.Println("\nStarting to read user inputs to chat.")
@@ -76,26 +81,36 @@ func main() {
 
 //TODO maintain list of all nodes and send to everybody
 //read access to channel list
-func chatSay() {
-	reader := bufio.NewReader(os.Stdin) //read line from standard input
+//close the connection
 
-	conn, err := net.Dial("tcp", serverIP+":"+SERVER_PORT)
-	for { //keep reading inputs forever
+func chatSay(connList *list.List) {
+	reader := bufio.NewReader(os.Stdin) //get teh reader to read lines from standard input
+
+	//conn, err := net.Dial("tcp", serverIP+":"+SERVER_PORT)
+
+	for !stop { //keep reading inputs forever
 		fmt.Print("Enter text to chat with the p2p network: ")
 		str, _ := reader.ReadString('\n')
-		_, err = conn.Write([]byte(str)) //transmit string as byte array
-		if err != nil {
-			fmt.Println("Error send reply:", err.Error())
+
+		mutexClientList.Lock()
+		for e := connList.Front(); e != nil; e = e.Next() {
+			conn := e.Value.(net.TCPConn)
+			_, err := conn.Write([]byte(str)) //transmit string as byte array
+			if err != nil {
+				fmt.Println("Error send reply:", err.Error())
+			}
 		}
+		mutexClientList.Unlock()
 		fmt.Println("HOME" + ": " + str)
 	}
 }
 
-//TODO at first get list of clients. be ready to get a new client information any time
-//we need special message format for it
+//TODO at first get list of clients. be ready to get a new client any time
+/**
+Accept new clients. 
+*/
 func acceptClients(port string, connList *list.List) {
 	fmt.Println("Listenning to port", port)
-	
 
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -107,18 +122,20 @@ func acceptClients(port string, connList *list.List) {
 			fmt.Println("Error in accepting connection.")
 			continue
 		}
-		
+
 		mutexClientList.Lock()
 		connList.PushBack(conn)
 		mutexClientList.Unlock()
-		
+
 		go handleClient(conn, connList)
 		runtime.Gosched()
 	}
 }
 
-//listen and wait for content from client. the write to client will be 
-//performed when the current user enters an input
+/**
+Receive message from client. listen and wait for content from client. the write to 
+client will be performed when the current user enters an input
+*/
 func handleClient(conn net.Conn, connList *list.List) {
 	fmt.Println("Handling Connection")
 
@@ -133,11 +150,17 @@ func handleClient(conn net.Conn, connList *list.List) {
 	}
 }
 
+/**
+Generate a port number
+*/
 func generatePortNo() string {
 	rand.Seed(time.Now().Unix())
 	return strconv.Itoa(rand.Intn(5000) + 5000) //generate a valid port
 }
 
+/**
+Determine the local IP addresses
+*/
 func getLocalIP() []string {
 	name, err := os.Hostname()
 	if err != nil {
