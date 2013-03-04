@@ -6,14 +6,17 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
+//	"strings"
 	"time"
+	"container/list"
 )
 
 var (
-	port       int  
-	serverIP       = "localhost"     //TODO fix server ip
-	SERVER_PORT int = 5555  //default port as the main p2p server
+	port        string
+	serverIP           = "localhost" //TODO fix server ip
+	SERVER_PORT string = "5555"      //default port as the main p2p server
 )
 
 func main() {
@@ -40,20 +43,46 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Server Socket: " + serverIP + ":" + strconv.Itoa(SERVER_PORT))
+	fmt.Println("Server Socket: " + serverIP + ":" + SERVER_PORT)
 
 	localIp := getLocalIP()
-	fmt.Println("Local Socket: " + localIp[0] + ":" + strconv.Itoa(port))
+	fmt.Println("Local Socket: " + localIp[0] + ":" + port)
 
-	go listenToPort(port)
-	fmt.Println("After Go.")
-	
+	go chatListen(port)
+	go chatSay()
+	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
 
+	fmt.Println("\nStarting to read user inputs to chat.")
+
+	for {
+		time.Sleep(1000 * time.Millisecond)
+	} //keep main thread alive
 }
 
-func listenToPort(port int) {
+
+//TODO maintain list of all nodes and send to everybody
+func chatSay() {
+	reader := bufio.NewReader(os.Stdin) //read line from standard input
+
+	conn, err := net.Dial("tcp", serverIP+":"+SERVER_PORT)
+	for { //keep reading inputs forever
+		fmt.Print("Enter text to chat with the p2p network: ")
+		str, _ := reader.ReadString('\n')
+		_, err = conn.Write([]byte(str)) //transmit string as byte array
+		if err != nil {
+			fmt.Println("Error send reply:", err.Error())
+		} 
+		fmt.Println("HOME" + ": " + str)
+	}
+}
+
+//TODO at first get list of clients. be ready to get a new client information any time
+//we need special message format for it
+func chatListen(port string) {
 	fmt.Println("Listenning to port", port)
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	lst := list.New() //list of p2p chat users.
+	
+	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error listenning to port ", port)
 	}
@@ -64,16 +93,18 @@ func listenToPort(port int) {
 			continue
 		}
 		go handleConnection(conn)
+		runtime.Gosched()
 	}
 }
+
 
 func handleConnection(conn net.Conn) {
 	fmt.Println("Handling Connection")
 }
 
-func generatePortNo() int {
+func generatePortNo() string {
 	rand.Seed(time.Now().Unix())
-	return rand.Intn(5000) + 5000 //generate a valid port
+	return strconv.Itoa(rand.Intn(5000) + 5000) //generate a valid port
 }
 
 func getLocalIP() []string {
