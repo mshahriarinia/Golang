@@ -6,32 +6,69 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"time"
 )
 
 var (
-	id             = "Server"
-	port       int = 5555
-	serverIP       = "localhost"
-	serverPort     = 5555
+	port       int  
+	serverIP       = "localhost"     //TODO fix server ip
+	SERVER_PORT int = 5555  //default port as the main p2p server
 )
 
 func main() {
+	//initialize values
+	reader := bufio.NewReader(os.Stdin) //read line from standard input
 
-	//read line from standard input
-	reader := bufio.NewReader(os.Stdin)
-	str, err := reader.ReadString('\n')
-	fmt.Println(str, err)
+	fmt.Println("               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.")
+	fmt.Print("Run this node as main server? (y/n) ")
 
-	fmt.Println("Id: ", id, "IP: ")
-	if id != "Server" {
-		port = generatePortNo()
+	str, err := reader.ReadString('\n') //ignore the error by sending it to nil
+	if err != nil {
+		fmt.Println("Can not read from command line.")
+		os.Exit(1)
 	}
-	fmt.Println(port)
-	fmt.Println("Node Starting w/ ip")
+
+	if []byte(str)[0] == 'y' {
+		fmt.Println("Starting the node as the main p2p server.")
+		port = SERVER_PORT
+	} else if []byte(str)[0] == 'n' {
+		fmt.Println("Starting the node as a normal p2p node.")
+		port = generatePortNo()
+	} else {
+		fmt.Println("Wrong argument type.")
+		os.Exit(1)
+	}
+
+	fmt.Println("Server Socket: " + serverIP + ":" + strconv.Itoa(SERVER_PORT))
+
 	localIp := getLocalIP()
-	fmt.Println("Local Socket: ", localIp, ":", port)
-	fmt.Println("Server Socket: ", serverIP, ":", serverPort)
+	fmt.Println("Local Socket: " + localIp[0] + ":" + strconv.Itoa(port))
+
+	go listenToPort(port)
+	fmt.Println("After Go.")
+	
+
+}
+
+func listenToPort(port int) {
+	fmt.Println("Listenning to port", port)
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		fmt.Println("Error listenning to port ", port)
+	}
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			fmt.Println("Error in accepting connection.")
+			continue
+		}
+		go handleConnection(conn)
+	}
+}
+
+func handleConnection(conn net.Conn) {
+	fmt.Println("Handling Connection")
 }
 
 func generatePortNo() int {
@@ -45,15 +82,17 @@ func getLocalIP() []string {
 		fmt.Printf("Oops: %v\n", err)
 		return []string{}
 	}
-	fmt.Println("Hostname: ", name)
+	fmt.Println("Local Hostname: " + name)
+
 	addrs, err := net.LookupHost(name)
-	fmt.Println(addrs)
 	if err != nil {
 		fmt.Printf("Oops: %v\n", err)
 		return []string{}
 	}
-	for _, a := range addrs {
-		fmt.Println(a)
-	}
+	fmt.Println("Local IP Addresses: ", addrs)
+
+	//for _, a := range addrs {    //print addresses
+	//fmt.Println(a)
+	//}
 	return addrs
 }
