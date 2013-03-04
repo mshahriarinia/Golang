@@ -1,5 +1,13 @@
 package main
 
+/**
+Reading arbitrary strings from command-line was a bit trickey as I couldn't get a straight-forward example 
+on telling how to do it. But after visiting tens of pages and blogs it was fixed.
+
+Multi-threading communciation via channels is very useful but not in our context. We need Mutex 
+for handling our clients which is not straightforward or natural in channels and message streams.  
+*/
+
 import (
 	"bufio"
 	"fmt"
@@ -11,17 +19,21 @@ import (
 	//	"strings"
 	"container/list"
 	"time"
+	"sync"
 )
 
 var (
 	port        string
 	serverIP           = "localhost" //TODO fix server ip
 	SERVER_PORT string = "5555"      //default port as the main p2p server
+	stop               = false
+	mutexClientList sync.Mutex
 )
 
 func main() {
 	//initialize values
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
+	connList := list.New() //list of p2p chat users.
 
 	fmt.Println("               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.")
 	fmt.Print("Run this node as main server? (y/n) ")
@@ -48,18 +60,22 @@ func main() {
 	localIp := getLocalIP()
 	fmt.Println("Local Socket: " + localIp[0] + ":" + port)
 
-	go chatListen(port)
+	go acceptClients(port, connList)
 	go chatSay()
 	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
 
 	fmt.Println("\nStarting to read user inputs to chat.")
 
-	for {
+	//it's good to not include accepting new clients from main just in case the user
+	//wants to quit by typing some keywords, the main thread is not stuck at
+	// net.listen.accept forever
+	for !stop {
 		time.Sleep(1000 * time.Millisecond)
 	} //keep main thread alive
 }
 
 //TODO maintain list of all nodes and send to everybody
+//read access to channel list
 func chatSay() {
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
 
@@ -77,35 +93,44 @@ func chatSay() {
 
 //TODO at first get list of clients. be ready to get a new client information any time
 //we need special message format for it
-func chatListen(port string) {
+func acceptClients(port string, connList *list.List) {
 	fmt.Println("Listenning to port", port)
-	connList := list.New() //list of p2p chat users.
+	
 
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error listenning to port ", port)
 	}
-	for {
+	for !stop {
 		conn, err := ln.Accept()
 		if err != nil {
 			fmt.Println("Error in accepting connection.")
 			continue
 		}
-		go handleConnection(conn)
+		
+		mutexClientList.Lock()
+		connList.PushBack(conn)
+		mutexClientList.Unlock()
+		
+		go handleClient(conn, connList)
 		runtime.Gosched()
 	}
 }
 
-func handleConnection(conn net.Conn) {
+//listen and wait for content from client. the write to client will be 
+//performed when the current user enters an input
+func handleClient(conn net.Conn, connList *list.List) {
 	fmt.Println("Handling Connection")
 
 	buffer := make([]byte, 1024)
-	bytesRead, error := conn.Read(buffer)
-	if error != nil {
-		Log("Client connection error: ", error)
+	for !stop {
+		bytesRead, error := conn.Read(buffer)
+		if error != nil {
+			fmt.Println("Error in reading from connection")
+		}
+		input := string(buffer[0:bytesRead])
+		fmt.Println(conn, input)
 	}
-
-	name := string(buffer[0:bytesRead])
 }
 
 func generatePortNo() string {
