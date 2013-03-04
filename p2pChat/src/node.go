@@ -29,7 +29,7 @@ import (
 
 var (
 	port            string
-	serverIP               = "localhost" //TODO fix server ip
+	SERVER_IP              = "localhost" //TODO fix server ip
 	SERVER_PORT     string = "5555"      //default port as the main p2p server
 	stop                   = false
 	mutexClientList sync.Mutex
@@ -50,26 +50,26 @@ func main() {
 	}
 
 	if []byte(str)[0] == 'y' {
-		fmt.Println("Starting the node as the main p2p server.")
+		fmt.Println("Node is the main p2p server.")
 		port = SERVER_PORT
 	} else if []byte(str)[0] == 'n' {
-		fmt.Println("Starting the node as a normal p2p node.")
+		fmt.Println("Node is a normal p2p node.")
 		port = generatePortNo()
 	} else {
 		fmt.Println("Wrong argument type.")
 		os.Exit(1)
 	}
 
-	fmt.Println("Server Socket: " + serverIP + ":" + SERVER_PORT)
-
+	fmt.Println("Server Socket: " + SERVER_IP + ":" + SERVER_PORT)
 	localIp := getLocalIP()
 	fmt.Println("Local Socket: " + localIp[0] + ":" + port)
 
 	go acceptClients(port, connList)
 	go chatSay(connList)
+	if []byte(str)[0] == 'n' {
+		connectToNode(SERVER_IP, SERVER_PORT, connList)
+	}
 	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
-
-	fmt.Println("\nStarting to read user inputs to chat.")
 
 	//it's good to not include accepting new clients from main just in case the user
 	//wants to quit by typing some keywords, the main thread is not stuck at
@@ -77,6 +77,22 @@ func main() {
 	for !stop {
 		time.Sleep(1000 * time.Millisecond)
 	} //keep main thread alive
+}
+
+/**
+ask for a connection from a node
+*/
+func connectToNode(ip string, port string, connList *list.List) {
+	mutexClientList.Lock()
+	conn, err := net.Dial("tcp", ip+":"+port)
+	if err != nil {
+		fmt.Println("Error connecting to:", ip+":"+port, err.Error())
+	}
+	connList.PushBack(conn)
+	mutexClientList.Unlock()
+	printlist(connList)
+	go handleClient(conn, connList)
+	runtime.Gosched()
 }
 
 //TODO maintain list of all nodes and send to everybody
@@ -89,21 +105,24 @@ func chatSay(connList *list.List) {
 	//conn, err := net.Dial("tcp", serverIP+":"+SERVER_PORT)
 
 	for !stop { //keep reading inputs forever
-		fmt.Print("Enter text to chat with the p2p network: ")
+		fmt.Print("user@Home\\ ")
 		str, _ := reader.ReadString('\n')
 
 		mutexClientList.Lock()
 		for e := connList.Front(); e != nil; e = e.Next() {
-			conn := e.Value.(net.TCPConn)
+			conn := e.Value.(*net.TCPConn)
 			_, err := conn.Write([]byte(str)) //transmit string as byte array
 			if err != nil {
-				fmt.Println("Error send reply:", err.Error())
+				fmt.Println("Error sending reply:", err.Error())
 			}
 		}
 		mutexClientList.Unlock()
-		fmt.Println("HOME" + ": " + str)
 	}
 }
+
+//TODO close connections
+//TODO forward new ip:port to other nodes
+//TODO remove clients from connlist
 
 //TODO at first get list of clients. be ready to get a new client any time
 /**
@@ -115,17 +134,20 @@ func acceptClients(port string, connList *list.List) {
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error listenning to port ", port)
+		stop = true
 	}
 	for !stop {
 		conn, err := ln.Accept()
 		if err != nil {
 			fmt.Println("Error in accepting connection.")
+			stop = true
 			continue
 		}
 
 		mutexClientList.Lock()
 		connList.PushBack(conn)
 		mutexClientList.Unlock()
+		printlist(connList)
 
 		go handleClient(conn, connList)
 		runtime.Gosched()
@@ -137,17 +159,41 @@ Receive message from client. listen and wait for content from client. the write 
 client will be performed when the current user enters an input
 */
 func handleClient(conn net.Conn, connList *list.List) {
-	fmt.Println("Handling Connection")
+	fmt.Println("New node: ", conn.RemoteAddr())
+
+	stopConn := false
 
 	buffer := make([]byte, 1024)
-	for !stop {
-		bytesRead, error := conn.Read(buffer)
-		if error != nil {
-			fmt.Println("Error in reading from connection")
+	for !stopConn {
+		bytesRead, err := conn.Read(buffer)
+		if err != nil {
+			stopConn = true
+			fmt.Println("Error in reading from connection", conn.RemoteAddr())
+			mutexClientList.Lock()
+			e := getListElement(conn, connList)
+			if e != nil {
+				connList.Remove(e)
+			}
+
+			mutexClientList.Unlock()
+		} else {
+			input := string(buffer[0:bytesRead])
+			fmt.Print(conn.RemoteAddr(), " says: ", input)
 		}
-		input := string(buffer[0:bytesRead])
-		fmt.Println(conn, input)
 	}
+	fmt.Println("Closing ", conn.RemoteAddr())
+	conn.Close()
+}
+
+func getListElement(conn net.Conn, l *list.List) *list.Element {
+	for e := l.Front(); e != nil; e = e.Next() {
+		temp := e.Value.(*net.TCPConn)
+		if conn.RemoteAddr() == temp.RemoteAddr() {
+			//fmt.Println("found connection.")
+			return e
+		}
+	}
+	return nil
 }
 
 /**
@@ -180,4 +226,13 @@ func getLocalIP() []string {
 	//fmt.Println(a)
 	//}
 	return addrs
+}
+
+func printlist(l *list.List) {
+	fmt.Print("\nConnection List: [")
+	for e := l.Front(); e != nil; e = e.Next() {
+		conn := e.Value.(*net.TCPConn)
+		fmt.Print(conn.RemoteAddr(), " ")
+	}
+	fmt.Println("]")
 }
