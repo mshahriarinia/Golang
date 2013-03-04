@@ -8,9 +8,9 @@ import (
 	"os"
 	"runtime"
 	"strconv"
-//	"strings"
-	"time"
+	//	"strings"
 	"container/list"
+	"time"
 )
 
 var (
@@ -59,7 +59,6 @@ func main() {
 	} //keep main thread alive
 }
 
-
 //TODO maintain list of all nodes and send to everybody
 func chatSay() {
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
@@ -71,7 +70,7 @@ func chatSay() {
 		_, err = conn.Write([]byte(str)) //transmit string as byte array
 		if err != nil {
 			fmt.Println("Error send reply:", err.Error())
-		} 
+		}
 		fmt.Println("HOME" + ": " + str)
 	}
 }
@@ -80,8 +79,8 @@ func chatSay() {
 //we need special message format for it
 func chatListen(port string) {
 	fmt.Println("Listenning to port", port)
-	lst := list.New() //list of p2p chat users.
-	
+	connList := list.New() //list of p2p chat users.
+
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error listenning to port ", port)
@@ -97,9 +96,16 @@ func chatListen(port string) {
 	}
 }
 
-
 func handleConnection(conn net.Conn) {
 	fmt.Println("Handling Connection")
+
+	buffer := make([]byte, 1024)
+	bytesRead, error := conn.Read(buffer)
+	if error != nil {
+		Log("Client connection error: ", error)
+	}
+
+	name := string(buffer[0:bytesRead])
 }
 
 func generatePortNo() string {
