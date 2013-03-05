@@ -35,12 +35,17 @@ var (
 	SERVER_PORT              string = "5555"      //default port as the main p2p server
 	stop                            = false
 	mutexClientList          sync.Mutex
-	CONTROL_MESSAGE_PREAMBLE = "\u001B" + ":!q " //char code used in VIM to exit the program
+	CONTROL_MESSAGE_PREAMBLE = "\u001B" + ":!q" //char code used in VIM to exit the program
+	
+	client                   struct {
+		 conn net.Conn
+		port string
+	}
 )
 
 func main() {
-t := time.Now()
-fmt.Println(t.Format("StampMilli"))
+	t := time.Now()
+	fmt.Println(t.Format("StampMilli"))
 	//initialize values
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
 	connList := list.New()              //list of p2p chat users.
@@ -67,7 +72,7 @@ fmt.Println(t.Format("StampMilli"))
 
 	fmt.Println("Server Socket: " + SERVER_IP + ":" + SERVER_PORT)
 	localIp := getLocalIP()
-	fmt.Println("Local Socket: " + localIp[0] + ":" + port)
+	fmt.Println(" Local Socket: " + localIp[0] + ":" + port)
 	fmt.Println("---------------------------------------------------------")
 
 	go acceptClients(port, connList)
@@ -162,16 +167,17 @@ client will be performed when the current user enters an input
 func handleClient(conn net.Conn, connList *list.List) {
 	fmt.Println("New node: ", conn.RemoteAddr())
 	stopConn := false
-	
+
 	mutexClientList.Lock()
 	connList.PushBack(conn)
 	mutexClientList.Unlock()
-	
+
 	printlist(connList)
 
 	//send current node list (when acting as connection server)
 	str := connListToStr(connList)
-	_, err := conn.Write([]byte(CONTROL_MESSAGE_PREAMBLE + str)) //transmit string as byte array
+	_, err := conn.Write([]byte(CONTROL_MESSAGE_PREAMBLE + " " + port +
+		" " + str)) //transmit string as byte array
 	if err != nil {
 		fmt.Println("Error sending reply:", err.Error())
 	}
@@ -195,16 +201,8 @@ func handleClient(conn net.Conn, connList *list.List) {
 			fmt.Println(conn.RemoteAddr(), " says: ", input)
 
 			if strings.Contains(input, CONTROL_MESSAGE_PREAMBLE) {
-				strArr := strings.Split(input, " ")
-				for _, ipport := range strArr {
-					if !strings.Contains(ipport,
-						strings.Trim(CONTROL_MESSAGE_PREAMBLE, " ")) ||
-						strings.Contains(ipport, conn.LocalAddr().String()) { //skip preamble
-						connectToNode(ipport, connList)
-					}
-				}
+				connectToPeers(input, connList)
 			}
-
 		}
 	}
 	fmt.Println("Closing ", conn.RemoteAddr())
@@ -220,6 +218,34 @@ func getListElement(conn net.Conn, l *list.List) *list.Element {
 		}
 	}
 	return nil
+}
+
+func connectToPeers(controlMessage string, connList *list.List) {
+	strArr := strings.Split(controlMessage, " ")
+	for i, ipport := range strArr {
+		if i == 0 {
+			//skip preamble
+		} else if !isSelf(ipport) { //skip preamble
+			connectToNode(ipport, connList)
+		}
+	}
+}
+
+/**
+Checks to see if the ipport combination is the current node itself. 
+*/
+func isSelf(ipport string) bool {
+	ipArr := getLocalIP()
+
+	for _, ip := range ipArr {
+		if ipport == ip+":"+port {
+			return true
+		}
+	}
+	if ipport == "127.0.0.1"+":"+port || ipport == "localhost"+":"+port {
+		return true
+	}
+	return false
 }
 
 /**
@@ -239,14 +265,14 @@ func getLocalIP() []string {
 		fmt.Printf("Oops: %v\n", err)
 		return []string{}
 	}
-	fmt.Print("Local Hostname: " + name)
+	//fmt.Print("Local Hostname: " + name)
 
 	addrs, err := net.LookupHost(name)
 	if err != nil {
 		fmt.Printf("Oops: %v\n", err)
 		return []string{}
 	}
-	fmt.Print("\t\tLocal IP Addresses: ", addrs)
+	//	fmt.Print("\t\tLocal IP Addresses: ", addrs)
 
 	return addrs
 }
@@ -261,6 +287,7 @@ func connListToStr(l *list.List) string {
 		conn := e.Value.(*net.TCPConn)
 		s = s + conn.RemoteAddr().String() + " "
 	}
+	s = s + getLocalIP()[0] + ":" + port
 	mutexClientList.Unlock()
 	return strings.Trim(s, " ")
 }
