@@ -31,24 +31,25 @@ import (
 
 var (
 	port                     string
-	SERVER_IP                       = "localhost" //TODO fix server ip
+	SERVER_IP                       = "127.0.0.1" //TODO fix server ip
 	SERVER_PORT              string = "5555"      //default port as the main p2p server
 	stop                            = false
-	mutexClientList          sync.Mutex
+	mutexPeerList          sync.Mutex
 	CONTROL_MESSAGE_PREAMBLE = "\u001B" + ":!q" //char code used in VIM to exit the program
-	
-	client                   struct {
-		 conn net.Conn
-		port string
-	}
 )
+
+type Peer struct {
+		conn net.Conn
+		port string
+		ip string
+	}
 
 func main() {
 	t := time.Now()
 	fmt.Println(t.Format("StampMilli"))
 	//initialize values
 	reader := bufio.NewReader(os.Stdin) //read line from standard input
-	connList := list.New()              //list of p2p chat users.
+	peerList := list.New()            //list of p2p chat users.
 
 	fmt.Println("\n\n               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.\n\n")
 	fmt.Print("Run this node as main server? (y/n) ")
@@ -75,10 +76,10 @@ func main() {
 	fmt.Println(" Local Socket: " + localIp[0] + ":" + port)
 	fmt.Println("---------------------------------------------------------")
 
-	go acceptClients(port, connList)
-	go chatSay(connList)
+	go acceptPeers(port, peerList)
+	go chatSay(peerList)
 	if []byte(str)[0] == 'n' {
-		connectToNode(SERVER_IP+":"+SERVER_PORT, connList)
+		connectToPeer(SERVER_IP+":"+SERVER_PORT, peerList)
 	}
 	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
 
@@ -90,28 +91,48 @@ func main() {
 	} //keep main thread alive
 }
 
+func connectToPeers(peer Peer, controlMessage string, peerList *list.List) {
+	strArr := strings.Split(controlMessage, " ")
+	for i, ipport := range strArr {
+		if i == 0 {
+			//skip preamble
+		} else if i ==1 { //set actual port
+			peer.port = ipport
+		}else if !isSelf(ipport) { //skip preamble
+			connectToPeer(ipport, peerList)
+		}
+	}
+}
+
 /**
-ask for a connection from a node
+ask for a connection from a node via ipport
 */
-func connectToNode(ipport string, connList *list.List) {
-	mutexClientList.Lock()
-	conn, err := net.Dial("tcp", ipport)
+func connectToPeer(ipport string, peerList *list.List) {
+	mutexPeerList.Lock()
+	conn, err := net.Dial("tcp", ipport)	 
 	if err != nil {
 		fmt.Println("Error connecting to:", ipport, err.Error())
+		mutexPeerList.Unlock()
 		return
+		
 	}
-	connList.PushBack(conn)
-	mutexClientList.Unlock()
-	printlist(connList)
-	go handleClient(conn, connList)
+	peer := Peer{conn, "nilport", getIP(conn)}
+	
+	peerList.PushBack(peer)
+	mutexPeerList.Unlock()
+	
+	printlist(peerList)
+	
+	go handlePeer(peer, peerList)
 	runtime.Gosched()
 }
+
 
 //TODO maintain list of all nodes and send to everybody
 //read access to channel list
 //close the connection
 
-func chatSay(connList *list.List) {
+func chatSay(peerList *list.List) {
 	reader := bufio.NewReader(os.Stdin) //get teh reader to read lines from standard input
 
 	//conn, err := net.Dial("tcp", serverIP+":"+SERVER_PORT)
@@ -120,15 +141,15 @@ func chatSay(connList *list.List) {
 		fmt.Print("user@Home[\\ ")
 		str, _ := reader.ReadString('\n')
 
-		mutexClientList.Lock()
-		for e := connList.Front(); e != nil; e = e.Next() {
-			conn := e.Value.(*net.TCPConn)
+		mutexPeerList.Lock()
+		for e := peerList.Front(); e != nil; e = e.Next() {
+			conn := e.Value.(Peer).conn
 			_, err := conn.Write([]byte(str)) //transmit string as byte array
 			if err != nil {
 				fmt.Println("Error sending reply:", err.Error())
 			}
 		}
-		mutexClientList.Unlock()
+		mutexPeerList.Unlock()
 	}
 }
 
@@ -139,7 +160,7 @@ func chatSay(connList *list.List) {
 /**
 Accept new clients. 
 */
-func acceptClients(port string, connList *list.List) {
+func acceptPeers(port string, peerList *list.List) {
 	//fmt.Println("Listenning to port", port)
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -153,8 +174,13 @@ func acceptClients(port string, connList *list.List) {
 			stop = true
 			continue
 		}
+		
+		mutexPeerList.Lock()
+		peer := Peer{conn, "nilport", getIP(conn)}  
+		peerList.PushBack(peer)
+		mutexPeerList.Unlock()
 
-		go handleClient(conn, connList)
+		go handlePeer(peer, peerList)
 		runtime.Gosched()
 	}
 }
@@ -164,19 +190,15 @@ Receive message from client.
 Listen and wait for content from client. the write to 
 client will be performed when the current user enters an input
 */
-func handleClient(conn net.Conn, connList *list.List) {
-	fmt.Println("New node: ", conn.RemoteAddr())
+func handlePeer(peer Peer, peerList *list.List) {
+	fmt.Println("New node: ", peer.conn.RemoteAddr())
 	stopConn := false
 
-	mutexClientList.Lock()
-	connList.PushBack(conn)
-	mutexClientList.Unlock()
-
-	printlist(connList)
+	printlist(peerList)
 
 	//send current node list (when acting as connection server)
-	str := connListToStr(connList)
-	_, err := conn.Write([]byte(CONTROL_MESSAGE_PREAMBLE + " " + port +
+	str := peerListToStr(peerList)
+	_, err := peer.conn.Write([]byte(CONTROL_MESSAGE_PREAMBLE + " " + port +
 		" " + str)) //transmit string as byte array
 	if err != nil {
 		fmt.Println("Error sending reply:", err.Error())
@@ -186,33 +208,34 @@ func handleClient(conn net.Conn, connList *list.List) {
 	buffer := make([]byte, 1024)
 
 	for !stopConn {
-		bytesRead, err := conn.Read(buffer)
+		bytesRead, err := peer.conn.Read(buffer)
 		if err != nil {
 			stopConn = true
-			fmt.Println("Error in reading from connection", conn.RemoteAddr())
-			mutexClientList.Lock()
-			el := getListElement(conn, connList)
+			fmt.Println("Error in reading from connection", peer.conn.RemoteAddr())
+			mutexPeerList.Lock()
+			el := getListElement(peer, peerList)
 			if el != nil {
-				connList.Remove(el)
+				peerList.Remove(el)
 			}
-			mutexClientList.Unlock()
+			mutexPeerList.Unlock()
 		} else {
 			input := string(buffer[0:bytesRead])
-			fmt.Println(conn.RemoteAddr(), " says: ", input)
+			fmt.Println(peer.conn.RemoteAddr(), " says: ", input)
 
 			if strings.Contains(input, CONTROL_MESSAGE_PREAMBLE) {
-				connectToPeers(input, connList)
+				connectToPeers(peer, input, peerList)
 			}
 		}
 	}
-	fmt.Println("Closing ", conn.RemoteAddr())
-	conn.Close()
+	fmt.Println("Closing ", peer.conn.RemoteAddr())
+	peer.conn.Close()
 }
 
-func getListElement(conn net.Conn, l *list.List) *list.Element {
+func getListElement(peer Peer, l *list.List) *list.Element {
 	for e := l.Front(); e != nil; e = e.Next() {
-		temp := e.Value.(*net.TCPConn)
-		if conn.RemoteAddr() == temp.RemoteAddr() {
+		temp := e.Value.(Peer)
+		
+		if peer.conn.RemoteAddr() == temp.conn.RemoteAddr() {
 			//fmt.Println("found connection.")
 			return e
 		}
@@ -220,16 +243,7 @@ func getListElement(conn net.Conn, l *list.List) *list.Element {
 	return nil
 }
 
-func connectToPeers(controlMessage string, connList *list.List) {
-	strArr := strings.Split(controlMessage, " ")
-	for i, ipport := range strArr {
-		if i == 0 {
-			//skip preamble
-		} else if !isSelf(ipport) { //skip preamble
-			connectToNode(ipport, connList)
-		}
-	}
-}
+
 
 /**
 Checks to see if the ipport combination is the current node itself. 
@@ -256,6 +270,14 @@ func generatePortNo() string {
 	return strconv.Itoa(rand.Intn(5000) + 5000) //generate a valid port
 }
 
+func getIP(conn net.Conn) string{
+	s := conn.RemoteAddr().String()
+	s = strings.Split(s, ":")[0]
+	s = strings.Trim(s, ":")
+	return s
+}
+
+
 /**
 Determine the local IP addresses
 */
@@ -277,23 +299,30 @@ func getLocalIP() []string {
 	return addrs
 }
 
-func connListToStr(l *list.List) string {
+/**
+Get a string of the peer list as ip:port
+*/
+func peerListToStr(l *list.List) string {
 	if l == nil {
 		return ""
 	}
 	s := ""
-	mutexClientList.Lock()
+	mutexPeerList.Lock()
 	for e := l.Front(); e != nil; e = e.Next() {
-		conn := e.Value.(*net.TCPConn)
-		s = s + conn.RemoteAddr().String() + " "
+		peer := e.Value.(Peer)
+		s = s + peer.ip + ":" + peer.port + " "
 	}
 	s = s + getLocalIP()[0] + ":" + port
-	mutexClientList.Unlock()
+	mutexPeerList.Unlock()
 	return strings.Trim(s, " ")
 }
 
 func printlist(l *list.List) {
 	fmt.Print("\nConnection List: [")
-	fmt.Print(connListToStr(l))
+	fmt.Print(peerListToStr(l))
 	fmt.Println("]")
+}
+
+func (p *Peer) ipport() string{
+	return p.ip + ":" + p.port
 }
