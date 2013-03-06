@@ -1,0 +1,27 @@
+
+
+               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.
+
+
+Run this node as main server? (y/n) Node is the main p2p server.
+Server Socket: 127.0.0.1:5555
+ Local Socket: 192.168.0.103:5555
+---------------------------------------------------------
+user@Home[\ New node:  127.0.0.1:60096
+port isSSSSSS:  9639
+found connection.
+setted port to 9639
+found connection.
+Error connecting to:  dial tcp: missing address
+
+Connection List: [127.0.0.1:9639]
+127.0.0.1:60096  says:  :!q 9639 
+New node:  127.0.0.1:60104
+port isSSSSSS:  6506
+found connection.
+setted port to 6506
+found connection.
+Error connecting to:  dial tcp: missing address
+
+Connection List: [127.0.0.1:9639 127.0.0.1:6506]
+127.0.0.1:60104  says:  :!q 6506 

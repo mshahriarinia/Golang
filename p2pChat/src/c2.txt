@@ -1,0 +1,6 @@
+
+
+               Welcome to Peer-to-Peer (P2P) Command-Line Chat in Go language.
+
+
+Run this node as main server? (y/n) Can not read from command line.

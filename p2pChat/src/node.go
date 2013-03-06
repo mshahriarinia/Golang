@@ -113,6 +113,9 @@ func connectToIpPort(ipport string, peerList *list.List) {
 	if strings.Contains(ipport, "nil"){
 		return
 	}
+	if isAlreadyconnected(ipport, peerList){
+	  	return
+	}
 	  
 	mutexPeerList.Lock()
 	conn, err := net.Dial("tcp", ipport)	 
@@ -124,7 +127,8 @@ func connectToIpPort(ipport string, peerList *list.List) {
 	}
 	peer := &Peer{conn, "nilport", getIP(conn)}
 	
-	peerList.PushBack(peer)
+	//peerList.PushBack(peer)
+	addToList(*peer, peerList)
 	mutexPeerList.Unlock()
 	
 	go handlePeer(peer, peerList)
@@ -224,7 +228,8 @@ func handlePeer(peer *Peer, peerList *list.List) {
 			
 		} else {
 			messageStr := string(buffer[0:bytesRead])
-			fmt.Println(peer.conn.RemoteAddr(), " says: ", messageStr)
+			
+			
 
 			if strings.Contains(messageStr, CONTROL_MESSAGE_PREAMBLE) {
 				//pass peer itself to set actual port
@@ -233,14 +238,20 @@ func handlePeer(peer *Peer, peerList *list.List) {
 				
 				
 				el := getListElement(*peer, peerList)
-				p := el.Value.(*Peer)
-				p.port = sArr[1]
-				//peer.port = sArr[1]  
-				fmt.Println("setted port to", p.port)
-				setPort(*peer, peerList, sArr[1])
-				
-				connectToPeers(*peer, messageStr, peerList) 
+				if el != nil {
+					p := el.Value.(*Peer)
+					p.port = sArr[1]
+					//peer.port = sArr[1]  
+					fmt.Println("setted port to", p.port)
+					setPort(*peer, peerList, sArr[1])
+					
+					connectToPeers(*peer, messageStr, peerList) 
+					printlist(peerList)				
+				}
+				fmt.Println(peer.conn.RemoteAddr(), " says: ", messageStr)
+			}else{
 				printlist(peerList)
+				fmt.Println(peer.conn.RemoteAddr(), " says: ", messageStr)
 			}
 		}
 	}
@@ -276,6 +287,37 @@ func getListElement(peer Peer, l *list.List) *list.Element {
 }
 
 
+
+/**
+Avoid adding redundant peers to list, shall be already locked by mutex
+*/
+func addToList(peer Peer, l *list.List)  {
+
+//	for e := l.Front(); e != nil; e = e.Next() {
+//		temp := e.Value.(*Peer)
+//		
+//		if peer.ipport() == temp.ipport() {
+//			fmt.Println("found connection. not being added")
+//			return 
+//		}
+//	}
+	if ! isAlreadyconnected(peer.ipport(), l){			  
+		l.PushBack(&peer)
+	}
+	return 
+}
+
+func isAlreadyconnected(ipport string, l *list.List)bool{
+	for e := l.Front(); e != nil; e = e.Next() {
+		temp := e.Value.(*Peer)		
+		if ipport == temp.ipport() {
+			return true
+		}
+	}			  
+	return false
+}
+
+
 /**
 Get a string of the peer list as ip:port
 */
@@ -287,7 +329,9 @@ func peerListToStr(l *list.List) string {
 	mutexPeerList.Lock()
 	for e := l.Front(); e != nil; e = e.Next() {
 		peer := e.Value.(*Peer)
-		s = s + peer.ip + ":" + peer.port + " "
+		if peer.port != "nilport"{
+			s = s + peer.ip + ":" + peer.port + " "
+		}
 	}
 	//s = s + getLocalIP()[0] + ":" + port
 	mutexPeerList.Unlock()
