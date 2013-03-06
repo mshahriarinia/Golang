@@ -1,19 +1,28 @@
 package main
 
 /**
-This project will implement a Peer-to-Peer command-line chat in Go language. 
+This project will implement a Peer-to-Peer command-line chat in Go language. in one control 
+message only send the actual ipport combination of other peers and let others know 
+about other peers. One node can be the server (default port of connection for all nodes)
+but once nodes connect the peer-to-peer chat works even with the server being taken down
+or any of the other nodes being taken down.
+
 @March 2013
 @by Morteza Shahriari Nia   @mshahriarinia
 
-
-//in one control message only send the actual port
 
 Reading arbitrary strings from command-line was a bit trickey as I couldn't get a straight-forward example 
 on telling how to do it. But after visiting tens of pages and blogs it was fixed. Buffers, buffered reader, 
 streams, ... The diffference between when you learn womething and when you actually do it.
 
 Multi-threading communciation via channels is very useful but not in our context. We need Mutex 
-for handling our clients which is not straightforward or natural in channels and message streams.  
+for handling our clients which is not straightforward or natural in channels and message streams.
+
+The last time consuming issue was the matter of pointers and how to differnetiate 
+between pass by reference/value. I could not find a good resource online explaining this
+and had to hack through
+
+Debugging without a debugger was a killer but ended up being ok.  
 */
 
 import (
@@ -80,9 +89,6 @@ func main() {
 	go acceptPeers(port, peerList)
 	go chatSay(peerList)
 	
-//	if []byte(str)[0] == 'n' {
-//		connectToPeer(SERVER_IP+":"+SERVER_PORT, peerList)
-//	}
 	runtime.Gosched() //let the new thread to start, otherwuse it will not execute.
 
 	//it's good to not include accepting new clients from main just in case the user
@@ -93,6 +99,10 @@ func main() {
 	} //keep main thread alive
 }
 
+/**
+When a peer receives a control message consisting of its list of peers, other peers 
+connect to that list one by one. list in this message is a string of ipport combinations
+*/
 func connectToPeers(peer Peer, controlMessage string, peerList *list.List) {
 	strArr := strings.Split(controlMessage, " ")
 	for i, ipport := range strArr {
@@ -140,10 +150,9 @@ func connectToIpPort(ipport string, peerList *list.List) {
 }
 
 
-//TODO maintain list of all nodes and send to everybody
-//read access to channel list
-//close the connection
-
+/**
+read access to channel list
+*/
 func chatSay(peerList *list.List) {
 	reader := bufio.NewReader(os.Stdin) //get teh reader to read lines from standard input
 
@@ -165,10 +174,6 @@ func chatSay(peerList *list.List) {
 	}
 }
 
-//TODO close connections
-//TODO forward new ip:port to other nodes
-
-//TODO at first get list of clients. be ready to get a new client any time
 /**
 Accept new clients. 
 */
@@ -263,7 +268,10 @@ func handlePeer(peer *Peer, peerList *list.List) {
 	peer.conn.Close()
 }
 
-
+/**
+When the peer sends the port of its TCP listener for new peers we need to set 
+it in our Peer struct and later on use it for  forwarding this port to other peers
+*/
 func setPort(peer Peer, l *list.List, port string) *list.Element {
 	for e := l.Front(); e != nil; e = e.Next() {
 		temp := e.Value.(*Peer)
@@ -277,7 +285,9 @@ func setPort(peer Peer, l *list.List, port string) *list.Element {
 	return nil
 }
 
-
+/**
+return the element of the list that represents the same peer as the arguemnt
+*/
 func getListElement(peer Peer, l *list.List) *list.Element {
 	for e := l.Front(); e != nil; e = e.Next() {
 		temp := e.Value.(*Peer)
@@ -296,21 +306,15 @@ func getListElement(peer Peer, l *list.List) *list.Element {
 Avoid adding redundant peers to list, shall be already locked by mutex
 */
 func addToList(peer Peer, l *list.List)  {
-
-//	for e := l.Front(); e != nil; e = e.Next() {
-//		temp := e.Value.(*Peer)
-//		
-//		if peer.ipport() == temp.ipport() {
-//			fmt.Println("found connection. not being added")
-//			return 
-//		}
-//	}
 	if ! isAlreadyconnected(peer.ipport(), l){			  
 		l.PushBack(&peer)
 	}
 	return 
 }
 
+/**
+check if the ipport combination is already being conneted to
+*/
 func isAlreadyconnected(ipport string, l *list.List)bool{
 	for e := l.Front(); e != nil; e = e.Next() {
 		temp := e.Value.(*Peer)		
@@ -342,12 +346,18 @@ func peerListToStr(l *list.List) string {
 	return strings.Trim(s, " ")
 }
 
+/**
+print ipport combination of the current peer list 
+*/
 func printlist(l *list.List) {
 	fmt.Print("\nPeer List: [")
 	fmt.Print(peerListToStr(l))
 	fmt.Println("]")
 }
 
+/**
+struct function to return the ipport combination to be used for comparisons
+*/
 func (p *Peer) ipport() string{
 	return p.ip + ":" + p.port
 }
@@ -377,6 +387,9 @@ func generatePortNo() string {
 	return strconv.Itoa(rand.Intn(5000) + 5000) //generate a valid port
 }
 
+/**
+return the ip address of a tcp connection
+*/
 func getIP(conn net.Conn) string{
 	s := conn.RemoteAddr().String()
 	s = strings.Split(s, ":")[0]
