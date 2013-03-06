@@ -122,7 +122,7 @@ func connectToIpPort(ipport string, peerList *list.List) {
 		return
 		
 	}
-	peer := Peer{conn, "nilport", getIP(conn)}
+	peer := &Peer{conn, "nilport", getIP(conn)}
 	
 	peerList.PushBack(peer)
 	mutexPeerList.Unlock()
@@ -147,7 +147,7 @@ func chatSay(peerList *list.List) {
 
 		mutexPeerList.Lock()
 		for e := peerList.Front(); e != nil; e = e.Next() {
-			conn := e.Value.(Peer).conn
+			conn := e.Value.(*Peer).conn
 			_, err := conn.Write([]byte(str)) //transmit string as byte array
 			if err != nil {
 				fmt.Println("Error sending reply:", err.Error())
@@ -180,7 +180,7 @@ func acceptPeers(port string, peerList *list.List) {
 		}
 		
 		mutexPeerList.Lock()
-		peer := Peer{conn, "nilport", getIP(conn)}  
+		peer := &Peer{conn, "nilport", getIP(conn)}  
 		peerList.PushBack(peer)
 		mutexPeerList.Unlock()
 
@@ -194,7 +194,7 @@ Receive message from client.
 Listen and wait for content from client. the write to 
 client will be performed when the current user enters an input
 */
-func handlePeer(peer Peer, peerList *list.List) {
+func handlePeer(peer *Peer, peerList *list.List) {
 	stopConn := false
 	fmt.Println("New node: ", peer.conn.RemoteAddr())
 		
@@ -216,7 +216,7 @@ func handlePeer(peer Peer, peerList *list.List) {
 			stopConn = true
 			fmt.Println("Error in reading from connection", peer.conn.RemoteAddr())
 			mutexPeerList.Lock()
-			el := getListElement(peer, peerList)
+			el := getListElement(*peer, peerList)
 			if el != nil {
 				peerList.Remove(el)
 			}
@@ -232,14 +232,14 @@ func handlePeer(peer Peer, peerList *list.List) {
 				fmt.Println("port isSSSSSS: ", sArr[1])
 				
 				
-				el := getListElement(peer, peerList)
-				p := el.Value.(Peer)
+				el := getListElement(*peer, peerList)
+				p := el.Value.(*Peer)
 				p.port = sArr[1]
 				//peer.port = sArr[1]  
 				fmt.Println("setted port to", p.port)
-				setPort(peer, peerList, sArr[1])
+				setPort(*peer, peerList, sArr[1])
 				
-				connectToPeers(peer, messageStr, peerList) 
+				connectToPeers(*peer, messageStr, peerList) 
 				printlist(peerList)
 			}
 		}
@@ -251,11 +251,11 @@ func handlePeer(peer Peer, peerList *list.List) {
 
 func setPort(peer Peer, l *list.List, port string) *list.Element {
 	for e := l.Front(); e != nil; e = e.Next() {
-		temp := e.Value.(Peer)
+		temp := e.Value.(*Peer)
 		
 		if peer.conn.RemoteAddr() == temp.conn.RemoteAddr() {
-			//fmt.Println("found connection.")
-			(&temp).port = port
+			fmt.Println("found connection.")
+			temp.port = port
 			return e
 		}
 	}
@@ -265,14 +265,43 @@ func setPort(peer Peer, l *list.List, port string) *list.Element {
 
 func getListElement(peer Peer, l *list.List) *list.Element {
 	for e := l.Front(); e != nil; e = e.Next() {
-		temp := e.Value.(Peer)
+		temp := e.Value.(*Peer)
 		
 		if peer.conn.RemoteAddr() == temp.conn.RemoteAddr() {
-			//fmt.Println("found connection.")
+			fmt.Println("found connection.")
 			return e
 		}
 	}
 	return nil
+}
+
+
+/**
+Get a string of the peer list as ip:port
+*/
+func peerListToStr(l *list.List) string {
+	if l == nil {
+		return ""
+	}
+	s := ""
+	mutexPeerList.Lock()
+	for e := l.Front(); e != nil; e = e.Next() {
+		peer := e.Value.(*Peer)
+		s = s + peer.ip + ":" + peer.port + " "
+	}
+	//s = s + getLocalIP()[0] + ":" + port
+	mutexPeerList.Unlock()
+	return strings.Trim(s, " ")
+}
+
+func printlist(l *list.List) {
+	fmt.Print("\nConnection List: [")
+	fmt.Print(peerListToStr(l))
+	fmt.Println("]")
+}
+
+func (p *Peer) ipport() string{
+	return p.ip + ":" + p.port
 }
 
 /**
@@ -327,32 +356,4 @@ func getLocalIP() []string {
 	//	fmt.Print("\t\tLocal IP Addresses: ", addrs)
 
 	return addrs
-}
-
-/**
-Get a string of the peer list as ip:port
-*/
-func peerListToStr(l *list.List) string {
-	if l == nil {
-		return ""
-	}
-	s := ""
-	mutexPeerList.Lock()
-	for e := l.Front(); e != nil; e = e.Next() {
-		peer := e.Value.(Peer)
-		s = s + peer.ip + ":" + peer.port + " "
-	}
-	//s = s + getLocalIP()[0] + ":" + port
-	mutexPeerList.Unlock()
-	return strings.Trim(s, " ")
-}
-
-func printlist(l *list.List) {
-	fmt.Print("\nConnection List: [")
-	fmt.Print(peerListToStr(l))
-	fmt.Println("]")
-}
-
-func (p *Peer) ipport() string{
-	return p.ip + ":" + p.port
 }
