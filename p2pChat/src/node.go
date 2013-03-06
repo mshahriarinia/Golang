@@ -7,6 +7,8 @@ about other peers. One node can be the server (default port of connection for al
 but once nodes connect the peer-to-peer chat works even with the server being taken down
 or any of the other nodes being taken down.
 
+Go version:  go1.0.3
+
 @March 2013
 @by Morteza Shahriari Nia   @mshahriarinia
 
