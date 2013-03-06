@@ -113,6 +113,10 @@ func connectToIpPort(ipport string, peerList *list.List) {
 	if strings.Contains(ipport, "nil"){
 		return
 	}
+	if len(strings.Trim(ipport, " ")) == 0{
+		return
+	}
+	
 	if isAlreadyconnected(ipport, peerList){
 	  	return
 	}
@@ -248,10 +252,10 @@ func handlePeer(peer *Peer, peerList *list.List) {
 					connectToPeers(*peer, messageStr, peerList) 
 					printlist(peerList)				
 				}
-				fmt.Println(peer.conn.RemoteAddr(), " says: ", messageStr)
+				fmt.Println(peer.ipport(), " says: ", messageStr)
 			}else{
 				printlist(peerList)
-				fmt.Println(peer.conn.RemoteAddr(), " says: ", messageStr)
+				fmt.Println(peer.ipport(), " says: ", messageStr)
 			}
 		}
 	}
@@ -339,7 +343,7 @@ func peerListToStr(l *list.List) string {
 }
 
 func printlist(l *list.List) {
-	fmt.Print("\nConnection List: [")
+	fmt.Print("\nPeer List: [")
 	fmt.Print(peerListToStr(l))
 	fmt.Println("]")
 }
