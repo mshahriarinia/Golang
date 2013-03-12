@@ -44,7 +44,7 @@ import (
 
 var (
 	port                     string
-	SERVER_IP                       = "10.136.45.240" //TODO fix server ip
+	SERVER_IP                       = "127.0.0.1" //TODO fix server ip
 	SERVER_PORT              string = "5555"      //default port as the main p2p server
 	stop                            = false
 	mutexPeerList          sync.Mutex
