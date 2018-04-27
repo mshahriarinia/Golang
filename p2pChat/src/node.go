@@ -15,7 +15,7 @@ Go version:  go1.0.3
 
 Reading arbitrary strings from command-line was a bit trickey as I couldn't get a straight-forward example 
 on telling how to do it. But after visiting tens of pages and blogs it was fixed. Buffers, buffered reader, 
-streams, ... The diffference between when you learn womething and when you actually do it.
+streams, ... The diffference between when you learn something and when you actually do it.
 
 Multi-threading communciation via channels is very useful but not in our context. We need Mutex 
 for handling our clients which is not straightforward or natural in channels and message streams.
